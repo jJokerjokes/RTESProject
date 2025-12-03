@@ -3,7 +3,8 @@
 
 **Course:** ECE-GY 6483 - Real Time Embedded Systems (Fall 2025)  
 **Group:** 30  
-**Lead Author:** Gengyuan Bai  
+**Lead Author:** Bai, Gengyuan; Zhang, Charles
+
 **Team Members:**
 1. Bai, Gengyuan
 2. Hua, Bin
@@ -24,9 +25,15 @@
 - [x] **Visual Feedback:** LED patterns implemented for all states.
 - [x] **Fault Tolerance:** System auto-recovers from sensor errors without crashing.
 
+### 🔄 Updates (by Zhang, Charles)
+- **Parameter Tuning:** Adjusted FOG variance thresholds, drop ratio, and signal magnitude threshold for improved sensitivity.
+- **Initialization:** Added hardware self-check (LEDs), sensor ID verification, and register-level configuration.
+- **Robustness:** Added safety flags (`imuOk`, `bleOk`) to prevent system crashes on hardware failure.
+- **Dependencies:** Added LoRa library support.
+
 ### ⏳ In Progress / To Be Verified
-- [ ] **BLE Connectivity:** Code implemented, but connection with mobile app has not yet been fully field-tested.
-- [ ] **FOG Simulation:** The "Freezing of Gait" algorithm (Variance drop detection) is implemented, but the specific physical movement is difficult to simulate manually for validation.
+- [x] **BLE Connectivity:** Code implemented, verified by Zhang, Charles.
+- [x] **FOG Simulation:** The "Freezing of Gait" algorithm (Variance drop detection) is implemented and tuned by Zhang, Charles.
 
 ---
 
@@ -107,6 +114,50 @@ Do **NOT** try to pair via the iPhone system Settings. iOS hides custom data dev
 3.  **Build:** Click the Checkmark (✔) icon or run `pio run`.
 4.  **Upload:** Click the Arrow (→) icon or run `pio run --target upload`.
 5.  **Monitor:** Click the Plug (🔌) icon to open Serial Monitor (Baud: 115200) for debug logs.
+
+---
+
+## 📊 Serial Monitor Output Example
+
+Below is a sample output from the serial monitor showing the real-time analysis:
+
+```
+<<<<<<<<<<<<< Author: Bai, Gengyuan; Zhang, Charles >>>>>>>>>>>>>
+
+********** Buffer Full **********
+Time elapsed: 4845 ms
+Expected: 4864 ms
+
+========== FFT Analysis ==========
+Variance: 0.0000
+Std Dev: 0.0011
+Mean (DC component): 1.0173 g
+Removing DC component...
+Mean after DC removal: -0.000000 g (should be ~0)
+Variance after DC removal: 0.0000
+Peak Frequency: 2.00 Hz
+Peak Magnitude: 0.02
+Low signal power (0.02 < 1.5), ignoring...
+(Likely just noise or very subtle motion)
+
+--- FOG Detection Analysis ---
+Previous Moving State: NO
+Current Moving State: NO
+
+========== Status Summary ==========
+Tremor: NO
+Dyskinesia: NO
+FOG (Freezing of Gait): NO
+====================================
+
+Ready for next data collection...
+```
+
+**Key Metrics Explained:**
+*   **Variance:** Measures movement intensity (higher = more movement).
+*   **Peak Frequency:** Dominant frequency in the acceleration signal.
+*   **Peak Magnitude:** Signal strength (must exceed 1.5 for valid detection).
+*   **FOG Detection:** Tracks sudden drops in variance during movement.
 
 ---
 

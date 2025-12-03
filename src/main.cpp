@@ -1,7 +1,10 @@
-#include <Arduino.h>
-#include <LSM6DSLSensor.h>
 #include <arduinoFFT.h>
+#include "Arduino.h"
+#include <Wire.h>
+#include <LSM6DSLSensor.h>
+#include <BLEDevice.h>
 #include <STM32duinoBLE.h>
+
 
 // I2C 实例（使用板载 I2C）
 #define DEV_I2C Wire
@@ -48,10 +51,10 @@ bool wasMoving = false;
 float currentVariance = 0.0;
 
 // FOG 检测阈值
-#define MOVEMENT_VARIANCE_THRESHOLD 0.05
-#define STILLNESS_VARIANCE_THRESHOLD 0.01
-#define FOG_FREQUENCY_THRESHOLD 2.0
-#define VARIANCE_DROP_RATIO 0.3
+#define MOVEMENT_VARIANCE_THRESHOLD 0.012
+#define STILLNESS_VARIANCE_THRESHOLD 0.003
+#define VARIANCE_DROP_RATIO 0.55 
+#define FOG_FREQUENCY_THRESHOLD 3.0 
 
 // LED 状态枚举
 enum LEDMode {
@@ -357,7 +360,7 @@ void sampleAndAnalyze() {
   bufferIndex++;
   
   if (bufferIndex >= SAMPLES) {
-    Serial.println("author: gengyuan bai");
+    Serial.println("<<<<<<<<<<<<< Author: Bai, Gengyuan; Zhang, Charles >>>>>>>>>>>>>");
     Serial.println("\n********** Buffer Full **********");
     Serial.print("Time elapsed: ");
     Serial.print((currentTime - (lastSampleTime - SAMPLE_INTERVAL * (SAMPLES - 1))));
@@ -429,7 +432,7 @@ void analyzeFrequency() {
   isFOG = false;
   
   // ========== 幅度门限检查 ==========
-  const float MAGNITUDE_THRESHOLD = 5.0;
+  const float MAGNITUDE_THRESHOLD = 1.5; // Up to change
   
   if (peakValue < MAGNITUDE_THRESHOLD) {
     Serial.print("Low signal power (");
@@ -616,7 +619,7 @@ void setup() {
   digitalWrite(PIN_LD4_WIFI, LOW);
   
   Serial.println("LED mode preview finished.");
-  Serial.println("author: gengyuan bai");
+  Serial.println("<<<<<<<<<<<<< Author: Bai, Gengyuan; Zhang, Charles >>>>>>>>>>>>>");
 
   // I2C 初始化
   Serial.println("\n========== I2C Initialization ==========");
