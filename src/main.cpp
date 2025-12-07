@@ -89,21 +89,28 @@ int debugSampleCount = 0;
 #define TREMOR_CHAR_UUID      "19B10001-E8F2-537E-4F6C-D104768A1214"
 #define DYSKINESIA_CHAR_UUID  "19B10002-E8F2-537E-4F6C-D104768A1214"
 #define FOG_CHAR_UUID         "19B10003-E8F2-537E-4F6C-D104768A1214"
+#define BLE_TEXT_MAX_LEN 25
+
+const char* STATUS_NORMAL = "Normal";
+const char* STATUS_TREMOR = "Tremor Detected";
+const char* STATUS_DYSKINESIA = "Dyskinesia Detected";
+const char* STATUS_FOG = "FOG Detected";
 
 BLEService pdService(PD_SERVICE_UUID);
-BLEUnsignedCharCharacteristic tremorChar(TREMOR_CHAR_UUID, BLERead | BLENotify);
-BLEUnsignedCharCharacteristic dyskinesiaChar(DYSKINESIA_CHAR_UUID, BLERead | BLENotify);
-BLEUnsignedCharCharacteristic fogChar(FOG_CHAR_UUID, BLERead | BLENotify);
+BLEStringCharacteristic tremorChar(TREMOR_CHAR_UUID, BLERead | BLENotify, BLE_TEXT_MAX_LEN);
+BLEStringCharacteristic dyskinesiaChar(DYSKINESIA_CHAR_UUID, BLERead | BLENotify, BLE_TEXT_MAX_LEN);
+BLEStringCharacteristic fogChar(FOG_CHAR_UUID, BLERead | BLENotify, BLE_TEXT_MAX_LEN);
 
-bool lastTremorState = false;
-bool lastDyskinesiaState = false;
-bool lastFOGState = false;
+String lastTremorMessage = "";
+String lastDyskinesiaMessage = "";
+String lastFOGMessage = "";
 
 // 函数声明
 void analyzeFrequency();
 float calculateMean(float data[], int length);
 float calculateVariance(float data[], int length);
 void updateBLECharacteristics();
+void writeCharacteristicIfChanged(BLEStringCharacteristic &characteristic, String &lastValue, const char* newValue, const char* label, bool allowNormalNotify = false);
 void updateLEDs();
 bool readAccelDirect(int32_t *data);
 uint8_t readRegister(uint8_t reg);
@@ -186,40 +193,41 @@ float calculateVariance(float data[], int length) {
   return variance / length;
 }
 
+void writeCharacteristicIfChanged(BLEStringCharacteristic &characteristic, String &lastValue, const char* newValue, const char* label, bool allowNormalNotify) {
+  if (!bleOk) {
+    return;
+  }
+
+  bool isNormal = strcmp(newValue, STATUS_NORMAL) == 0;
+  if (isNormal && !allowNormalNotify) {
+    // 仅更新本地缓存，避免发送 Normal 通知导致手机端日志过多
+    lastValue = newValue;
+    return;
+  }
+
+  if (lastValue != newValue) {
+    characteristic.writeValue(newValue);
+    lastValue = newValue;
+    Serial.print("[BLE] ");
+    Serial.print(label);
+    Serial.print(" characteristic updated: ");
+    Serial.println(newValue);
+  }
+}
+
 void updateBLECharacteristics() {
   if (!bleOk) {
     return;
   }
 
-  bool updated = false;
-  
-  if (isTremor != lastTremorState) {
-    tremorChar.writeValue((uint8_t)isTremor);
-    lastTremorState = isTremor;
-    updated = true;
-    Serial.print("[BLE] Tremor characteristic updated: ");
-    Serial.println(isTremor ? "1" : "0");
-  }
-  
-  if (isDyskinesia != lastDyskinesiaState) {
-    dyskinesiaChar.writeValue((uint8_t)isDyskinesia);
-    lastDyskinesiaState = isDyskinesia;
-    updated = true;
-    Serial.print("[BLE] Dyskinesia characteristic updated: ");
-    Serial.println(isDyskinesia ? "1" : "0");
-  }
-  
-  if (isFOG != lastFOGState) {
-    fogChar.writeValue((uint8_t)isFOG);
-    lastFOGState = isFOG;
-    updated = true;
-    Serial.print("[BLE] FOG characteristic updated: ");
-    Serial.println(isFOG ? "1" : "0");
-  }
-  
-  if (updated) {
-    Serial.println("[BLE] Characteristics updated and notified to connected devices");
-  }
+  const char* tremorMessage = isTremor ? STATUS_TREMOR : STATUS_NORMAL;
+  const char* dyskinesiaMessage = isDyskinesia ? STATUS_DYSKINESIA : STATUS_NORMAL;
+  const char* fogMessage = isFOG ? STATUS_FOG : STATUS_NORMAL;
+
+  // 运行期不发送 Normal 通知，减少手机端日志
+  writeCharacteristicIfChanged(tremorChar, lastTremorMessage, tremorMessage, "Tremor", false);
+  writeCharacteristicIfChanged(dyskinesiaChar, lastDyskinesiaMessage, dyskinesiaMessage, "Dyskinesia", false);
+  writeCharacteristicIfChanged(fogChar, lastFOGMessage, fogMessage, "FOG", false);
 }
 
 // ========== 非阻塞 LED 控制 - 三灯组合视觉效果 ==========
@@ -526,6 +534,39 @@ void setup() {
   digitalWrite(PIN_LD1_GREEN, LOW);
   delay(150);
   
+  // BLE 初始化提前，方便在自检阶段用手机端验证通知
+  Serial.println("\nInitializing BLE...");
+  bleOk = BLE.begin();
+  if (!bleOk) {
+    Serial.println("Failed to initialize BLE! Program will run WITHOUT BLE.");
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(PIN_LD4_WIFI, HIGH);
+      delay(150);
+      digitalWrite(PIN_LD4_WIFI, LOW);
+      delay(150);
+    }
+  } else {
+    BLE.setLocalName("PD_Monitor_Group30");
+    BLE.setDeviceName("PD_Monitor_Group30");
+    // BLE.setAdvertisedService(pdService);  // 暂时禁用，避免广播包过大影响 iOS 扫描
+    
+    pdService.addCharacteristic(tremorChar);
+    pdService.addCharacteristic(dyskinesiaChar);
+    pdService.addCharacteristic(fogChar);
+    BLE.addService(pdService);
+    
+    // 初始化阶段允许写入 Normal 以设置初始特征值，但通常此时未连接手机端
+    writeCharacteristicIfChanged(tremorChar, lastTremorMessage, STATUS_NORMAL, "Tremor", true);
+    writeCharacteristicIfChanged(dyskinesiaChar, lastDyskinesiaMessage, STATUS_NORMAL, "Dyskinesia", true);
+    writeCharacteristicIfChanged(fogChar, lastFOGMessage, STATUS_NORMAL, "FOG", true);
+    
+    BLE.advertise();
+    
+    Serial.println("BLE initialized and advertising as PD_Monitor_Group30");
+    // NOTE: iOS 系统设置里看不到该类自定义 BLE 外设，请使用 nRF Connect / LightBlue 扫描。
+    Serial.println("NOTE: Use nRF Connect / LightBlue on iOS to scan custom BLE peripherals (系统设置里不会显示)。");
+  }
+
   // ========== LED 硬件自检（阻塞式）==========
   Serial.println("\n========== LED Hardware Test ==========");
   Serial.println("Using STM32 native pin names:");
@@ -578,6 +619,7 @@ void setup() {
   Serial.println("Showing MODE_TREMOR, MODE_DYSKINESIA, MODE_FOG for 2s each...");
   
   // 模式 1 预览（Tremor）
+  writeCharacteristicIfChanged(tremorChar, lastTremorMessage, STATUS_TREMOR, "Tremor (preview)", false);
   for (int i = 0; i < 2000; i += TREMOR_FAST_BLINK) {
     ld1State = !ld1State;
     ld2State = !ld1State;
@@ -586,6 +628,7 @@ void setup() {
     digitalWrite(PIN_LD4_WIFI, LOW);
     delay(TREMOR_FAST_BLINK);
   }
+  writeCharacteristicIfChanged(tremorChar, lastTremorMessage, STATUS_NORMAL, "Tremor (preview reset)", false);
   
   // 灯全灭再进入下一个模式
   digitalWrite(PIN_LD1_GREEN, LOW);
@@ -594,6 +637,7 @@ void setup() {
   delay(200);
   
   // 模式 2 预览（Dyskinesia）
+  writeCharacteristicIfChanged(dyskinesiaChar, lastDyskinesiaMessage, STATUS_DYSKINESIA, "Dyskinesia (preview)", false);
   for (int i = 0; i < 2000; i += DYSKINESIA_ALTERNATE) {
     ld1State = !ld1State;
     ld4State = !ld1State;
@@ -602,6 +646,7 @@ void setup() {
     digitalWrite(PIN_LD2_BLUE, LOW);
     delay(DYSKINESIA_ALTERNATE);
   }
+  writeCharacteristicIfChanged(dyskinesiaChar, lastDyskinesiaMessage, STATUS_NORMAL, "Dyskinesia (preview reset)", false);
   
   digitalWrite(PIN_LD1_GREEN, LOW);
   digitalWrite(PIN_LD2_BLUE, LOW);
@@ -609,6 +654,7 @@ void setup() {
   delay(200);
   
   // 模式 3 预览（FOG）
+  writeCharacteristicIfChanged(fogChar, lastFOGMessage, STATUS_FOG, "FOG (preview)", false);
   digitalWrite(PIN_LD1_GREEN, HIGH);
   digitalWrite(PIN_LD2_BLUE, HIGH);
   digitalWrite(PIN_LD4_WIFI, HIGH);
@@ -616,6 +662,7 @@ void setup() {
   digitalWrite(PIN_LD1_GREEN, LOW);
   digitalWrite(PIN_LD2_BLUE, LOW);
   digitalWrite(PIN_LD4_WIFI, LOW);
+  writeCharacteristicIfChanged(fogChar, lastFOGMessage, STATUS_NORMAL, "FOG (preview reset)", false);
   
   Serial.println("LED mode preview finished.");
   Serial.println("<<<<<<<<<<<<< Author: Bai, Gengyuan; Zhang, Charles >>>>>>>>>>>>>");
@@ -704,38 +751,6 @@ void setup() {
     Serial.println("==========================================");
   }
 
-  // BLE 初始化
-  Serial.println("\nInitializing BLE...");
-  bleOk = BLE.begin();
-  if (!bleOk) {
-    Serial.println("Failed to initialize BLE! Program will run WITHOUT BLE.");
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(PIN_LD4_WIFI, HIGH);
-      delay(150);
-      digitalWrite(PIN_LD4_WIFI, LOW);
-      delay(150);
-    }
-  } else {
-    BLE.setLocalName("PD_Monitor");
-    BLE.setDeviceName("PD_Monitor");
-    // BLE.setAdvertisedService(pdService);  // 暂时禁用，避免广播包过大影响 iOS 扫描
-    
-    pdService.addCharacteristic(tremorChar);
-    pdService.addCharacteristic(dyskinesiaChar);
-    pdService.addCharacteristic(fogChar);
-    BLE.addService(pdService);
-    
-    tremorChar.writeValue((uint8_t)0);
-    dyskinesiaChar.writeValue((uint8_t)0);
-    fogChar.writeValue((uint8_t)0);
-    
-    BLE.advertise();
-    
-    Serial.println("BLE initialized and advertising as PD_Monitor");
-    // NOTE: iOS 系统设置里看不到该类自定义 BLE 外设，请使用 nRF Connect / LightBlue 扫描。
-    Serial.println("NOTE: Use nRF Connect / LightBlue on iOS to scan custom BLE peripherals (系统设置里不会显示)。");
-  }
-  
   Serial.println("\n========== LED Display Modes ==========");
   Serial.println("Mode 0 (Standby):    LD1 slow blink");
   Serial.println("Mode 1 (Tremor):     LD2 RAPID strobe (50ms)");

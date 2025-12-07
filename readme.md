@@ -3,14 +3,13 @@
 
 **Course:** ECE-GY 6483 - Real Time Embedded Systems (Fall 2025)  
 **Group:** 30  
-**Lead Author:** Bai, Gengyuan; Zhang, Charles
 
 **Team Members:**
-1. Bai, Gengyuan
-2. Hua, Bin
-3. Huang, Yanjie
-4. Lee, Kylie
-5. Zhang, Charles
+1. Bai, Gengyuan — code framework, three-symptom monitoring, and LED mode design
+2. Zhang, Charles — BLE module and parameter tuning
+3. Hua, Bin — testing and filming
+4. Huang, Yanjie — testing and filming
+5. Lee, Kylie — video editing
 
 ---
 
@@ -89,7 +88,7 @@ The system operates on a strictly **non-blocking** loop using `millis()` schedul
 
 The device advertises as a custom peripheral.
 
-*   **Device Name:** `PD_Monitor`
+*   **Device Name:** `PD_Monitor_Group30`
 *   **Service UUID:** `19B10000-E8F2-537E-4F6C-D104768A1214`
 
 ### Characteristics
